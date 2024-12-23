@@ -1,4 +1,4 @@
-CFLAGS=-I../libmcp/ -I../libmcp2221-master/
+CFLAGS=-I../libmcp/ -I../libmcp2221-master/ -std=c99
 LDFLAGS=-L../libmcp/ -lmcp
 
 all: mcpi2c_wr
