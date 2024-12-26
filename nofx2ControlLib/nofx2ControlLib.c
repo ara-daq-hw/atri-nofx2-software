@@ -5,10 +5,14 @@
 #include <sys/un.h>
 #include <errno.h>
 #include <poll.h>
+#include <fcntl.h>
 #include "araSoft.h"
 
 static const int SUCCEED = 1;
 static const int FAILED = 0;
+
+static int controlReadFd = -1;
+static int controlWriteFd = -1;
 
 ///////////////////////////////////////////////////////////////////////////
 //                       RYAN'S CRAP                                     //
@@ -603,7 +607,12 @@ int openFx2Device() {
   
   // OUR SILLINESS
   mcpComLib_init();
-  pthread_mutex_unlock(&libusb_command_mutex);
+  controlReadFd = open("/dev/xillybus_pkt_out", O_WRONLY);
+  controlWriteFd = open("/dev/xillybus_pkt_in", O_RDONLY);
+  if (controlReadFd < 0 || controlWriteFd < 0) {
+    return -1;
+  }
+  pthread_mutex_unlock(&libusb_command_mutex);		       
 }
 
 int flushControlEndPoint() {
@@ -655,22 +664,54 @@ int sendVendorRequest(uint8_t bmRequestType, uint8_t bRequest, uint16_t wValue, 
 int readControlEndPoint(unsigned char *buffer,
 			int numBytes,
 			int *numBytesRead) {
-  // just lie.
-  *numBytesRead = numBytes;
-  return 0;
+  uint8_t *dp = buffer+4;
+  int rb;
+  // goddamn it.
+  // the difficulty with all of this is that Ryan's original code was
+  // extremely basic and just assumed you __always__ got a full packet
+  // from every "readControlEndPoint" because USB is packet based.
+  //
+  // Except our new library is not packet based, it's stream based
+  // since Xillybus's EOF stuff is godawful.
+  //
+  // So now we have to remember how the damn crap works in the first
+  // place.
+  // AtriControlPacket_t consists of a header and a variable data field.
+  // The header looks like
+  // < bbl [data] >
+  // where bb are unimportant, and l is the data length.
+  //
+  // so our tactic here is we're only ever going to read 1 packet
+  // at a time. We do this by polling with a timeout, and then
+  // reading a single packet and returning. Eff it.
+  struct pollfd pfd;
+  pfd.fd = controlReadFd;
+  pfd.events = POLLIN;
+  poll(&pfd, 1, 1);
+  if (!(pfd.revents & POLLIN)) return -7;
+  // read the control packet header 
+  read(controlReadFd, buffer, 4);
+  rb = 4;
+  // now read the data + trailer
+  read(controlReadFd, dp, buffer[3] + 1);
+  rb += buffer[3] + 1;  
+  return rb;
 }
 
 int writeControlEndPoint(unsigned char *buffer,
 			 int numBytes,
 			 int *numBytesSent) {
-  // also lie
-  *numBytesSent = numBytes;
+  ssize_t rv;
+  rv = write(controlWriteFd, buffer, numBytes);
+  if (rv < 0) return rv;
+  *numBytesSent = rv;
   return 0;
 }
 
 int readEventEndPoint(unsigned char *buffer,
 		      int numBytes,
 		      int *numBytesRead) {
+  usleep(100);
   // just say 0
   *numBytesRead = 0;
   return 0;
