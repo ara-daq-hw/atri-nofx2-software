@@ -607,8 +607,8 @@ int openFx2Device() {
   
   // OUR SILLINESS
   mcpComLib_init();
-  controlReadFd = open("/dev/xillybus_pkt_out", O_WRONLY);
-  controlWriteFd = open("/dev/xillybus_pkt_in", O_RDONLY);
+  controlReadFd = open("/dev/xillybus_pkt_out", O_RDONLY);
+  controlWriteFd = open("/dev/xillybus_pkt_in", O_WRONLY);
   if (controlReadFd < 0 || controlWriteFd < 0) {
     return -1;
   }
@@ -687,8 +687,10 @@ int readControlEndPoint(unsigned char *buffer,
   struct pollfd pfd;
   pfd.fd = controlReadFd;
   pfd.events = POLLIN;
-  poll(&pfd, 1, 1);
-  if (!(pfd.revents & POLLIN)) return -7;
+  poll(&pfd, 1, 10);  
+  if (!(pfd.revents & POLLIN)) {
+    return -7;
+  }
   // read the control packet header 
   read(controlReadFd, buffer, 4);
   rb = 4;
@@ -702,6 +704,7 @@ int writeControlEndPoint(unsigned char *buffer,
 			 int numBytes,
 			 int *numBytesSent) {
   ssize_t rv;
+  printf("writeControlEndPoint: %d bytes\n", numBytes);
   rv = write(controlWriteFd, buffer, numBytes);
   if (rv < 0) return rv;
   *numBytesSent = rv;
