@@ -10,6 +10,8 @@
 #include <unistd.h>
 #include <string.h>
 
+#define NOFX2_VERBOSE 0
+
 static const int SUCCEED = 1;
 static const int FAILED = 0;
 
@@ -697,7 +699,7 @@ int readControlEndPoint(unsigned char *buffer,
   if (!(pfd.revents & POLLIN)) {
     return -7;
   }
-  printf("readControlEndPoint has something\n");
+  
   // read the control packet header 
   read(controlReadFd, buffer, 4);
   rb = 4;
@@ -706,12 +708,16 @@ int readControlEndPoint(unsigned char *buffer,
   rb += buffer[3] + 1;
   // damnit
   *numBytesRead = rb;
+#ifdef NOFX2_VERBOSE
+  printf("readControlEndPoint: got a packet of %d bytes\n", rb);
   for (int i=0;i<rb;i++) {
     printf("%2.2x", buffer[i]);
     if (!((i+1)%16)) printf("\n");
     else if (i+1 < numBytes) printf(" ");
     else printf("\n");
   }
+#endif
+  
   return 0;
 }
 
@@ -719,6 +725,7 @@ int writeControlEndPoint(unsigned char *buffer,
 			 int numBytes,
 			 int *numBytesSent) {
   ssize_t rv;
+#ifdef NOFX2_VERBOSE
   printf("writeControlEndPoint: %d bytes\n", numBytes);
   for (int i=0;i<numBytes;i++) {
     printf("%2.2x", buffer[i]);
@@ -726,6 +733,7 @@ int writeControlEndPoint(unsigned char *buffer,
     else if (i+1 < numBytes) printf(" ");
     else printf("\n");
   }
+#endif  
   rv = write(controlWriteFd, buffer, numBytes);
   if (rv < 0) return rv;
   *numBytesSent = rv;
