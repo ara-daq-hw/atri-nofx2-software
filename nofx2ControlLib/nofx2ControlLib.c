@@ -11,6 +11,7 @@
 #include <string.h>
 
 #define NOFX2_VERBOSE 0
+#define NOFX2_EVENT_VERBOSE 1
 
 static const int SUCCEED = 1;
 static const int FAILED = 0;
@@ -820,7 +821,7 @@ int readEventEndPoint(unsigned char *buffer,
       dp = dp + retval;
 #ifdef NOFX2_EVENT_VERBOSE
       printf("nofx2: read %d bytes, %d remaining, dp offset now %d\n",
-	     retval, nbytes, (dp - frameBuffer));
+	     retval, nbytes, (dp - (uint8_t *)frameBuffer));
 #endif
     }
     frameBufferPointer = (uint8_t *) frameBuffer;
