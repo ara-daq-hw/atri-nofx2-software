@@ -17,6 +17,18 @@ static const int FAILED = 0;
 
 static int controlReadFd = -1;
 static int controlWriteFd = -1;
+static int eventReadFd = -1;
+// goddamn silliness
+// the frame buffer is a 32-bit pointer
+// the frame buffer pointer is an 8-bit pointer
+// so our insane readEventEndPoint function
+// can do whatever the hell Ryan's doing
+#define FRAME_BUFFER_SIZE 32769
+static uint32_t *frameBuffer = NULL;
+// how many bytes are actually stored in the frame buffer
+static uint32_t frameBufferNbytes = 0;
+// NULL used to indicate we don't have an event
+static uint8_t *frameBufferPointer = NULL;
 
 ///////////////////////////////////////////////////////////////////////////
 //                       RYAN'S CRAP                                     //
@@ -590,6 +602,10 @@ int closePcieDevice() {
 int closeFx2Device() {
   ARA_LOG_MESSAGE(LOG_DEBUG,"closeFx2Device with NO FX2 LIBRARY\n");
   mcpComLib_finish();
+  close(controlReadFd);
+  close(controlWriteFd);
+  close(eventReadFd);
+  free(frameBuffer);
   return SUCCEED;
 }
 
@@ -611,9 +627,17 @@ int openFx2Device() {
   
   // OUR SILLINESS
   mcpComLib_init();
+  // this is ALWAYS SUCH A PAIN IN THE ASS
+  // event readout is WORSE than control readout because
+  // frames can end up in multiple packets.
+  // let's just try being goddamn dumb
+  eventReadFd = open("/tmp/atri_inframes", O_RDONLY | O_NONBLOCK);
+  frameBuffer = (uint32_t *) malloc(sizeof(uint32_t)*FRAME_BUFFER_SIZE);
+  frameBufferPointer = NULL;
+  frameBufferNbytes = 0;
   controlReadFd = open("/tmp/atri_inpkts", O_RDONLY);
   controlWriteFd = open("/dev/xillybus_pkt_in", O_WRONLY);
-  if (controlReadFd < 0 || controlWriteFd < 0) {
+  if (controlReadFd < 0 || controlWriteFd < 0 || eventReadFd || (frameBuffer == NULL)) {
     return -1;
   }
   pthread_mutex_unlock(&libusb_command_mutex);		       
@@ -664,7 +688,6 @@ int sendVendorRequest(uint8_t bmRequestType, uint8_t bRequest, uint16_t wValue, 
 
 
 
-// VERY TEMPORARY
 int readControlEndPoint(unsigned char *buffer,
 			int numBytes,
 			int *numBytesRead) {
@@ -740,19 +763,98 @@ int writeControlEndPoint(unsigned char *buffer,
   return 0;
 }
 
+// *#^!(#^*@$#(^@#*^
+// this is an effing nightmare
+// I've tried a bunch of different options.
+// The best one I can come up with is locally
+// buffering a frame (again).
+// if we're called and no frame is available,
+// we POLLIN on the pipe. If nothing is available
+// return 0. ARAAcqd uses 0 as an indicator
+// that nothing's available.
+//
+// otherwise, we read the ENTIRE FRAME
+// and store how much we've read, filling up
+// the output buffer as requested.
 int readEventEndPoint(unsigned char *buffer,
 		      int numBytes,
 		      int *numBytesRead) {
-  usleep(100);
-  // just say 0
-  *numBytesRead = 0;
-  return 0;
+  uint32_t bytesRemaining;
+  
+  if (frameBufferPointer == NULL) {
+    // no event
+    struct pollfd pfd;
+    int retval;
+    uint32_t nwords;
+    uint32_t nbytes;
+    uint8_t *dp;
+    pfd.fd = eventReadFd;
+    pfd.events = POLLIN;
+    retval = poll(&pfd, 1, 10);
+    if (!(pfd.revents & POLLIN)) {
+      *numBytesRead = 0;      
+      return 0;
+    }
+    // yes event. read 1 uint32_t from the pipe
+    // to get started
+    retval = read(eventReadFd, frameBuffer, sizeof(uint32_t));
+    if (retval != sizeof(uint32_t)) {
+      fprintf(stderr, "nofx2 readEventEndPoint: less than 4 bytes read? %d\n",
+	      retval);
+      return -1;
+    }
+    nwords = (frameBuffer[0] >> 16) & 0xFFFF;
+    // convert this value to bytes and add 4 for the header
+    frameBufferNbytes = nwords*2 + 4;
+    // but if nwords is odd, add 1 for padding (which won't be passed on)
+    if (nwords & 0x1) nwords = nwords + 1;
+    nbytes = nwords * 2;
+#ifdef NOFX2_EVENT_VERBOSE
+    printf("nofx2: got an event frame header indicating %d bytes: to read %d words\n",
+	   frameBufferNbytes, nwords);
+#endif
+    dp = (uint8_t *) (&frameBuffer[1]);
+    while (nbytes) {
+      retval = read(eventReadFd, dp, nbytes);
+      nbytes = nbytes - retval;
+      dp = dp + retval;
+#ifdef NOFX2_EVENT_VERBOSE
+      printf("nofx2: read %d bytes, %d remaining, dp offset now %d\n",
+	     retval, nbytes, (dp - frameBuffer));
+#endif
+    }
+    frameBufferPointer = (uint8_t *) frameBuffer;
+  }
+  // ok so now frameBufferPointer is valid
+  // figure out how many bytes to write
+  bytesRemaining = frameBufferNbytes -
+    (frameBufferPointer - ((uint8_t *)frameBuffer));
+  if (bytesRemaining <= numBytes) {
+#ifdef NOFX2_EVENT_VERBOSE
+    printf("nofx2: delivering final %d bytes\n", bytesRemaining);
+#endif    
+    memcpy(buffer, frameBufferPointer, bytesRemaining);
+    frameBufferPointer = NULL;
+    frameBufferNbytes = 0;
+    *numBytesRead = bytesRemaining;
+    return 0;
+  } else {
+#ifdef NOFX2_EVENT_VERBOSE
+    printf("nofx2: delivering %d bytes (dp offset %d)\n", numBytes,
+	   (frameBufferPointer - ((uint8_t *) frameBuffer)));
+#endif
+    memcpy(buffer, frameBufferPointer, numBytes);
+    *numBytesRead = numBytes;
+    // move frameBufferPointer forward
+    frameBufferPointer += numBytes;
+    return 0;
+  }
 }
 
 // lol
 int writeEventEndPoint(unsigned char *buffer,
 		       int numBytes,
-		       int *numByteSent) {
+		       int *numByteSent) {  
   return 0;
 }
 
