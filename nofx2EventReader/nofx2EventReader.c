@@ -51,14 +51,14 @@ int main(int argc, char **argv) {
     fprintf(stderr, "cannot start up, one of wfd/rfd/malloc open() failed\n");
     fprintf(stderr, "open(/tmp/atri_inframes): %d", wfd);
     fprintf(stderr, "open(/dev/xillybus_ev_out): %d", rfd);
-    fprintf(stderr, "malloc(buffer): %d", (uint32_t) buffer);
+    fprintf(stderr, "malloc(buffer): %llx", (unsigned long long) buffer);
     unlink("/tmp/atri_inframes");
     exit(1);
   }
   while (1) {
     int nb;
     ndb = 4;
-    dp = buffer;
+    dp = (uint8_t *) buffer;
     // step 1: read the header.
     // a header consists of a single 32-bit word (4 bytes)
     retval = read(rfd, dp, ndb);
@@ -78,13 +78,13 @@ int main(int argc, char **argv) {
     // store total to read
     nrdb = ndb;
     // calculate data pointer
-    dp = buffer + 1;
+    dp = (uint8_t *) (&buffer[1]);
     if (verbosity > 1) {
       printf("got a header: %2.2x %2.2x\n",
 	     buffer[0] & 0xFFFF,
 	     (buffer[0] >> 16) & 0xFFFF);
       printf("waiting for %d bytes (dp offset %d)\n", ndb,
-	     (dp-buffer));
+	     (dp-(uint8_t *)buffer));
     }
     // while there are bytes to read, read
     while (ndb) {
@@ -105,7 +105,7 @@ int main(int argc, char **argv) {
       // move data pointer forward
       dp += (retval>>2);
       if (verbosity > 1) {
-	printf("got %d bytes (dp offset now %d) remaining %d\n", retval, (dp-buffer), ndb);
+	printf("got %d bytes (dp offset now %d) remaining %d\n", retval, (dp-(uint8_t *)buffer), ndb);
 	if (verbosity > 2) {
 	  for (int i=0;i<((nrdb-ndb)>>2);i++) {
 	    printf("%4.4x %4.4x", dp[i] & 0xFFFF, (dp[i] >> 16) & 0xFFFF);
