@@ -89,13 +89,13 @@ int sendVendorRequestMcp(uint8_t bmRequestType,
   // so just freaking drop it.
   if (bmRequestType == VR_HOST_TO_DEVICE) {
     uint8_t addr = wValue >> 1;
-    mcp_ara_i2c_write(globalDevice,
+    return mcp_ara_i2c_write(globalDevice,
 		      addr,
 		      data,
 		      wLength);
   } else if (bmRequestType == VR_DEVICE_TO_HOST) {
     uint8_t addr = wValue >> 1;
-    mcp_ara_i2c_read(globalDevice,
+    return mcp_ara_i2c_read(globalDevice,
 		     addr,
 		     data,
 		     wLength);
