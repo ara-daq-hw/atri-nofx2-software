@@ -69,8 +69,12 @@ int main(int argc, char **argv) {
       fprintf(stderr, "header: didn't get 4 bytes returned: %d\n", retval);
       goto myExit;
     }
-    // value is in words: make it bytes
-    ndb = ((buffer[0] >> 16) & 0xFFFF) << 1;
+    // value is in words
+    ndb = ((buffer[0] >> 16) & 0xFFFF);
+    // if it's odd, pad it
+    if (ndb & 0x1) ndb = ndb + 1;
+    // convert it to bytes
+    ndb = ndb * 2;
     // store total to read
     nrdb = ndb;
     // calculate data pointer
