@@ -7,6 +7,8 @@
 #define VR_ATRI_RESET 0xBB
 #define VR_VERSION 0xB7
 
+#define MCP_DEBUG 1
+
 /* these are the maps from GPIO to ENs */
 /* they DO NOT MATCH THE SCHEMATIC IGNORE THAT */
 /* GP0 -> EN3 */
@@ -85,8 +87,12 @@ int sendVendorRequestMcp(uint8_t bmRequestType,
     return 0;
   }
   if (bRequest != VR_ATRI_I2C) return -1;
+  // DE
   // NOTE: the addr that we get is the dumbcrap 8-bit address.
   // so just freaking drop it.
+
+  // we need to make sure we indicate an error somehow
+  // if we nack, otherwise the damn thing will run for-goddamn-ever
   if (bmRequestType == VR_HOST_TO_DEVICE) {
     uint8_t addr = wValue >> 1;
     return mcp_ara_i2c_write(globalDevice,
@@ -100,7 +106,6 @@ int sendVendorRequestMcp(uint8_t bmRequestType,
 		     data,
 		     wLength);
   }
-  return 0;
 }
 
 mcp2221_t *mcp_ara_open() {
