@@ -601,7 +601,7 @@ int closePcieDevice() {
 }
 
 int closeFx2Device() {
-  ARA_LOG_MESSAGE(LOG_DEBUG,"closeFx2Device with NO FX2 LIBRARY\n");
+  ARA_LOG_MESSAGE(LOG_INFO,"closeFx2Device with NO FX2 LIBRARY\n");
   mcpComLib_finish();
   close(controlReadFd);
   close(controlWriteFd);
@@ -612,7 +612,7 @@ int closeFx2Device() {
 
 int openFx2Device() {
   int i;
-  ARA_LOG_MESSAGE(LOG_DEBUG,"openFx2Device with NO FX2 LIBRARY\n");
+  ARA_LOG_MESSAGE(LOG_INFO,"openFx2Device with NO FX2 LIBRARY\n");
 
   // THIS IS RYAN SILLINESS EXCEPT COMMENTED CURRENT HANDLE 
   //  pthread_mutex_init(&async_buffer_mutex,NULL);
@@ -632,16 +632,31 @@ int openFx2Device() {
   // event readout is WORSE than control readout because
   // frames can end up in multiple packets.
   // let's just try being goddamn dumb
-  eventReadFd = open("/tmp/atri_inframes", O_RDONLY | O_NONBLOCK);
+  eventReadFd = open("/tmp/atri_inframes", O_RDONLY);
+  if (eventReadFd < 0) {
+    ARA_LOG_MESSAGE(LOG_ERR, "cannot open /tmp/atri_inframes");
+    pthread_mutex_unlock(&libusb_command_mutex);
+    return -1;
+  }
   frameBuffer = (uint32_t *) malloc(sizeof(uint32_t)*FRAME_BUFFER_SIZE);
+  if (frameBuffer == NULL) {
+    ARA_LOG_MESSAGE(LOG_ERR, "cannot allocate frameBuffer");
+    pthread_mutex_unlock(&libusb_command_mutex);
+    return -1;
+  }
   frameBufferPointer = NULL;
   frameBufferNbytes = 0;
   controlReadFd = open("/tmp/atri_inpkts", O_RDONLY);
   controlWriteFd = open("/dev/xillybus_pkt_in", O_WRONLY);
-  if (controlReadFd < 0 || controlWriteFd < 0 || eventReadFd || (frameBuffer == NULL)) {
+  // sigh
+  if (controlReadFd < 0 || controlWriteFd < 0) {
+    ARA_LOG_MESSAGE(LOG_ERR, "cannot open either /tmp/atri_inpkts or /dev/xillybus_pkt_in");
+    pthread_mutex_unlock(&libusb_command_mutex);
     return -1;
   }
+  ARA_LOG_MESSAGE(LOG_INFO, "openFx2Device (nofx2) successful");
   pthread_mutex_unlock(&libusb_command_mutex);		       
+  return 0;
 }
 
 int flushControlEndPoint() {
