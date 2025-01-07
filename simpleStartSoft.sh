@@ -20,7 +20,8 @@ SETUP_SCRIPT=/home/ara/WorkingDAQ/setupAraDaq.sh
 
 # Modified script to start up nofx2ControlReader and nofx2EventReader
 # first and then kill then on exit since I'm effing sick of doing it
-NOFX2_SOFT_DIR=/home/ara/atri-nofx2-software/
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+NOFX2_SOFT_DIR=${SCRIPT_DIR}
 PACKET_PIPE=/tmp/atri_inpkts
 FRAME_PIPE=/tmp/atri_inframes
 
