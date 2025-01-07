@@ -33,6 +33,7 @@ int main(int argc, char **argv) {
   unsigned int nrdb;
   uint32_t *buffer;
   uint8_t *dp;
+  uint8_t *op;
   int verbosity = 0;
 
   argc--;
@@ -102,13 +103,15 @@ int main(int argc, char **argv) {
       }
       // decrease number of bytes to read
       ndb -= retval;
+      // store original data pointer
+      op = dp;
       // move data pointer forward
       dp += (retval>>2);
       if (verbosity > 1) {
 	printf("got %d bytes (dp offset now %d) remaining %d\n", retval, (dp-(uint8_t *)buffer), ndb);
 	if (verbosity > 2) {
 	  for (int i=0;i<((nrdb-ndb)>>2);i++) {
-	    printf("%4.4x %4.4x", dp[i] & 0xFFFF, (dp[i] >> 16) & 0xFFFF);
+	    printf("%4.4x %4.4x", op[i] & 0xFFFF, (op[i] >> 16) & 0xFFFF);
 	    if (!((i+1)%8)) printf("\n");
 	    else if (i+1<(nrdb-ndb)) printf(" ");
 	    else printf("\n");
