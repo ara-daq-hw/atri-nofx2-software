@@ -10,8 +10,8 @@
 #include <unistd.h>
 #include <string.h>
 
-#define NOFX2_VERBOSE 0
-#define NOFX2_EVENT_VERBOSE 1
+//#define NOFX2_VERBOSE
+//#define NOFX2_EVENT_VERBOSE
 
 static const int SUCCEED = 1;
 static const int FAILED = 0;
@@ -25,6 +25,7 @@ static int eventReadFd = -1;
 // so our insane readEventEndPoint function
 // can do whatever the hell Ryan's doing
 #define FRAME_BUFFER_SIZE 32769
+#define PANIC_SIZE 6000
 static uint32_t *frameBuffer = NULL;
 // how many bytes are actually stored in the frame buffer
 static uint32_t frameBufferNbytes = 0;
@@ -811,6 +812,9 @@ int readEventEndPoint(unsigned char *buffer,
       *numBytesRead = 0;      
       return 0;
     }
+#ifdef NOFX2_EVENT_VERBOSE
+    printf("nofx2: data available from pipe, will read up to %d bytes\n", numBytes);
+#endif
     // yes event. read 1 uint32_t from the pipe
     // to get started
     retval = read(eventReadFd, frameBuffer, sizeof(uint32_t));
@@ -819,7 +823,12 @@ int readEventEndPoint(unsigned char *buffer,
 	      retval);
       return -1;
     }
+    // this value needs to be byte-swapped due to insanity
     nwords = (frameBuffer[0] >> 16) & 0xFFFF;
+    nwords = ((nwords >> 8) & 0xFF) | ((nwords & 0xFF) << 8);
+    if (nwords > PANIC_SIZE) {
+      ARA_LOG_MESSAGE(LOG_ERR, "nofx2 readEventEndPoint - huge frame size? %d nwords\n", nwords);
+    }
     // convert this value to bytes and add 4 for the header
     frameBufferNbytes = nwords*2 + 4;
     // but if nwords is odd, add 1 for padding (which won't be passed on)
@@ -847,16 +856,23 @@ int readEventEndPoint(unsigned char *buffer,
     (frameBufferPointer - ((uint8_t *)frameBuffer));
   if (bytesRemaining <= numBytes) {
 #ifdef NOFX2_EVENT_VERBOSE
-    printf("nofx2: delivering final %d bytes\n", bytesRemaining);
+    printf("nofx2: delivering final %d bytes (out of %d max)\n", bytesRemaining, numBytes);
 #endif    
     memcpy(buffer, frameBufferPointer, bytesRemaining);
+#ifdef NOFX2_EVENT_VERBOSE
+    printf("nofx2: beginning of buffer is %2.2x %2.2x %2.2x %2.2x\n",
+	   buffer[0],
+	   buffer[1],
+	   buffer[2],
+	   buffer[3]);
+#endif
     frameBufferPointer = NULL;
     frameBufferNbytes = 0;
     *numBytesRead = bytesRemaining;
     return 0;
   } else {
 #ifdef NOFX2_EVENT_VERBOSE
-    printf("nofx2: delivering %d bytes (dp offset %d)\n", numBytes,
+    printf("nofx2: delivering max allowed bytes (%d) (dp offset now %d)\n", numBytes,
 	   (frameBufferPointer - ((uint8_t *) frameBuffer)));
 #endif
     memcpy(buffer, frameBufferPointer, numBytes);
